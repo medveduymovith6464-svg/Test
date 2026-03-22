@@ -2280,128 +2280,6 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = active_rooms[room_id].get("lang", "en")
     chat_id = active_rooms[room_id]["chat_id"]
 
-    # 1. ПРОВЕРКА РЕСУРСОВ (100 веры, 250 еды, 100 монет)
-    FAITH_COST = 100
-    FOOD_COST = 250
-    MONEY_COST = 100
-
-    if attacker.faith < FAITH_COST or attacker.food < FOOD_COST or attacker.money < MONEY_COST:
-        if lang == "en":
-            text = f"❌ <b>Not enough resources for war!</b>\n\nNeed:\n🙏 Faith: {FAITH_COST}\n🍞 Food: {FOOD_COST}\n💰 Money: {MONEY_COST}\n\nYou have:\n🙏 Faith: {attacker.faith}\n🍞 Food: {attacker.food}\n💰 Money: {attacker.money}"
-        else:
-            text = f"❌ <b>Не хватает ресурсов для войны!</b>\n\nНужно:\n🙏 Веры: {FAITH_COST}\n🍞 Еды: {FOOD_COST}\n💰 Денег: {MONEY_COST}\n\nУ тебя:\n🙏 Веры: {attacker.faith}\n🍞 Еды: {attacker.food}\n💰 Денег: {attacker.money}"
-
-        back_button = [[InlineKeyboardButton("🔙 Back" if lang == "en" else "🔙 Назад", callback_data=f"back_to_game_{room_id}_{attacker_id}")]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(back_button), parse_mode="HTML")
-        return
-
-    # 2. СПИСЫВАЕМ РЕСУРСЫ
-    attacker.faith -= FAITH_COST
-    attacker.food -= FOOD_COST
-    attacker.money -= MONEY_COST
-
-    # 3. ИНИЦИАЛИЗИРУЕМ СЧЁТЧИК ПОТЕРЬ (если ещё нет)
-    if "battle_losses" not in active_rooms[room_id]:
-        active_rooms[room_id]["battle_losses"] = {attacker_id: 0, defender.user_id: 0}
-
-    # 4. РАСЧЁТ БОЯ
-    attack_force = attacker.population * 40 // 100
-    defend_force = defender.population * 40 // 100
-
-    attack_power = attack_force * attacker.bloodlust
-    defense_power = defend_force * defender.health
-
-    crit_msg = ""
-    if attacker.hate > 0 and random.random() < attacker.hate / 100:
-        attack_power *= 2
-        attacker.hate = 0
-        crit_msg = "🔥 CRIT! " if lang == "en" else "🔥 КРИТ! "
-
-    if attack_power > defense_power:
-        defender_losses = min(defend_force, (attack_power - defense_power) // defender.health + 1)
-        attacker_losses = attack_force // 4
-    else:
-        attacker_losses = min(attack_force, (defense_power - attack_power) // attacker.health + 1)
-        defender_losses = defend_force // 4
-
-    # Применяем потери
-    attacker.population = max(0, attacker.population - attacker_losses)
-    defender.population = max(0, defender.population - defender_losses)
-
-    # Некрополь
-    if "necropolis" in attacker.buildings:
-        resurrect = attacker_losses * 10 // 100
-        attacker.population += resurrect
-    if "necropolis" in defender.buildings:
-        resurrect = defender_losses * 10 // 100
-        defender.population += resurrect
-
-    # 5. ДОБАВЛЯЕМ ПОТЕРИ В СЧЁТЧИК
-    active_rooms[room_id]["battle_losses"][attacker_id] += attacker_losses
-    active_rooms[room_id]["battle_losses"][defender.user_id] += defender_losses
-
-    # 6. ПРОВЕРКА ЛИМИТА 25
-    attacker_total_losses = active_rooms[room_id]["battle_losses"][attacker_id]
-    defender_total_losses = active_rooms[room_id]["battle_losses"][defender.user_id]
-
-    battle_ended = False
-    winner = None
-    loser = None
-
-    if attacker_total_losses >= 25 or defender_total_losses >= 25:
-        battle_ended = True
-        if attacker_total_losses < defender_total_losses:
-            winner = attacker
-            loser = defender
-        elif defender_total_losses < attacker_total_losses:
-            winner = defender
-            loser = attacker
-        else:
-            winner = None
-
-        del active_rooms[room_id]["battle_losses"]
-
-    # 7. ИМЕНА
-    try:
-        attacker_name = (await context.bot.get_chat_member(chat_id, attacker_id)).user.username or str(attacker_id)
-        defender_name = (await context.bot.get_chat_member(chat_id, enemy_id)).user.username or str(enemy_id)
-    except:
-        attacker_name = str(attacker_id)
-        defender_name = str(enemy_id)
-
-    # 8. ПЕРЕДАЧА ХОДА
-    other_player = defender
-    active_rooms[room_id]["allowed"] = [other_player.user_id]
-    active_rooms[room_id]["current_player"] = other_player.user_id
-async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    parts = query.data.split("_")
-    room_id = "_".join(parts[1:-2])
-    enemy_id = int(parts[-2])
-    attacker_id = int(parts[-1])
-
-    if query.from_user.id != attacker_id:
-        return
-
-    if room_id not in active_rooms:
-        return
-
-    attacker = None
-    defender = None
-    for p in active_rooms[room_id].get("players", []):
-        if p.user_id == attacker_id:
-            attacker = p
-        elif p.user_id == enemy_id:
-            defender = p
-
-    if not attacker or not defender:
-        return
-
-    lang = active_rooms[room_id].get("lang", "en")
-    chat_id = active_rooms[room_id]["chat_id"]
-
     # 1. ПРОВЕРКА РЕСУРСОВ АТАКУЮЩЕГО
     FAITH_COST = 100
     FOOD_COST = 250
@@ -2423,15 +2301,12 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     attacker.money -= MONEY_COST
 
     # 3. НОВАЯ ЛОГИКА БОЯ
-    # Берём 25 юнитов у каждого (или меньше, если армия меньше)
     attacker_units = min(25, attacker.population)
     defender_units = min(25, defender.population)
 
-    # Сила удара
     attacker_power = attacker_units * attacker.bloodlust
     defender_power = defender_units * defender.health
 
-    # Крит от ненависти
     crit_msg = ""
     if attacker.hate > 0 and random.random() < attacker.hate / 100:
         attacker_power *= 2
@@ -2440,19 +2315,15 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Расчёт потерь
     if attacker_power > defender_power:
-        # Атакующий сильнее
         defender_losses = min(defender_units, int((attacker_power - defender_power) / defender.health) + 1)
         attacker_losses = 0
-        # Если защитник уничтожен, остаток атакующих не умирает
         if defender_losses >= defender_units:
             defender_losses = defender_units
             attacker_losses = 0
         else:
-            # Атакующий тоже теряет пропорционально
             attacker_losses = int(attacker_units * (defender_power / attacker_power))
             attacker_losses = min(attacker_units, attacker_losses)
     else:
-        # Защитник сильнее или равны
         attacker_losses = min(attacker_units, int((defender_power - attacker_power) / attacker.health) + 1)
         defender_losses = 0
         if attacker_losses >= attacker_units:
@@ -2462,11 +2333,11 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
             defender_losses = int(defender_units * (attacker_power / defender_power))
             defender_losses = min(defender_units, defender_losses)
 
-    # Применяем потери к основной армии
+    # Применяем потери
     attacker.population = max(0, attacker.population - attacker_losses)
     defender.population = max(0, defender.population - defender_losses)
 
-    # Некрополь (воскрешает 10% погибших)
+    # Некрополь
     if "necropolis" in attacker.buildings:
         resurrect = attacker_losses * 10 // 100
         attacker.population += resurrect
@@ -2474,23 +2345,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resurrect = defender_losses * 10 // 100
         defender.population += resurrect
 
-    # 4. ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
-    if attacker_losses > defender_losses:
-        winner = defender
-        loser = attacker
-        winner_text = defender_name
-        loser_text = attacker_name
-    elif defender_losses > attacker_losses:
-        winner = attacker
-        loser = defender
-        winner_text = attacker_name
-        loser_text = defender_name
-    else:
-        winner = None
-        winner_text = None
-        loser_text = None
-
-    # 5. ИМЕНА
+    # 4. ИМЕНА
     try:
         attacker_name = (await context.bot.get_chat_member(chat_id, attacker_id)).user.username or str(attacker_id)
         defender_name = (await context.bot.get_chat_member(chat_id, enemy_id)).user.username or str(enemy_id)
@@ -2498,19 +2353,32 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         attacker_name = str(attacker_id)
         defender_name = str(enemy_id)
 
+    # 5. ОПРЕДЕЛЯЕМ ПОБЕДИТЕЛЯ
+    if attacker_losses > defender_losses:
+        winner = defender
+        loser = attacker
+        winner_name = defender_name
+    elif defender_losses > attacker_losses:
+        winner = attacker
+        loser = defender
+        winner_name = attacker_name
+    else:
+        winner = None
+        winner_name = None
+
     # 6. ПЕРЕДАЧА ХОДА
     other_player = defender
     active_rooms[room_id]["allowed"] = [other_player.user_id]
     active_rooms[room_id]["current_player"] = other_player.user_id
     active_rooms[room_id]["turn"] = active_rooms[room_id].get("turn", 1) + 1
 
-    # 7. СООБЩЕНИЕ
+    # 7. ФОРМИРУЕМ СООБЩЕНИЕ
     if lang == "en":
         result = (f"{crit_msg}⚔️ <b>Battle Results</b>\n\n"
                   f"{attacker_name}\n├ Lost: {attacker_losses}\n└ Left: {attacker.population}\n\n"
                   f"{defender_name}\n├ Lost: {defender_losses}\n└ Left: {defender.population}")
         if winner:
-            result += f"\n\n🏆 <b>{winner_text} wins the battle!</b>"
+            result += f"\n\n🏆 <b>{winner_name} wins the battle!</b>"
         else:
             result += f"\n\n⚖️ <b>The battle ended in a draw!</b>"
         result += f"\n\n🔄 Turn passed to {defender_name}"
@@ -2525,7 +2393,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
                   f"{attacker_name}\n├ Потери: {attacker_losses}\n└ Осталось: {attacker.population}\n\n"
                   f"{defender_name}\n├ Потери: {defender_losses}\n└ Осталось: {defender.population}")
         if winner:
-            result += f"\n\n🏆 <b>{winner_text} победил в битве!</b>"
+            result += f"\n\n🏆 <b>{winner_name} победил в битве!</b>"
         else:
             result += f"\n\n⚖️ <b>Битва закончилась вничью!</b>"
         result += f"\n\n🔄 Ход передан {defender_name}"
@@ -2536,6 +2404,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end_turn_text = "⏭ Завершить ход"
         income_text = "📊 Доход"
 
+    # 8. КНОПКИ ДЛЯ СЛЕДУЮЩЕГО ИГРОКА
     game_keyboard = [
         [InlineKeyboardButton(my_city_text, callback_data=f"mycity_{room_id}_{other_player.user_id}"),
          InlineKeyboardButton(build_text, callback_data=f"build_{room_id}_{other_player.user_id}")],
@@ -2550,7 +2419,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-    # Проверяем, не закончилась ли игра
+    # 9. ПРОВЕРЯЕМ, НЕ ЗАКОНЧИЛАСЬ ЛИ ИГРА
     await check_game_over(room_id, context)
         
 async def back_to_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
