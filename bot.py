@@ -2250,7 +2250,7 @@ async def war(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode="HTML"
     )
-
+    
 async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2298,9 +2298,10 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     attacker.food -= FOOD_COST
     attacker.money -= MONEY_COST
 
-    # 3. РАСЧЁТ БОЯ (ОДИНАКОВАЯ ФОРМУЛА)
-    attacker_units = min(25, attacker.population)
-    defender_units = min(25, defender.population)
+    # 3. БОЙ — считаем потери так, чтобы у кого-то было 25
+    # Берём всё население, а не 25
+    attacker_units = attacker.population
+    defender_units = defender.population
 
     attacker_power = attacker_units * attacker.bloodlust * attacker.health
     defender_power = defender_units * defender.bloodlust * defender.health
@@ -2311,7 +2312,6 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         attacker.hate = 0
         crit_msg = "🔥 CRIT! " if lang == "en" else "🔥 КРИТ! "
 
-    # Общая сила
     total_power = attacker_power + defender_power
     if total_power == 0:
         total_power = 1
@@ -2320,9 +2320,15 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     attacker_losses = int(attacker_units * (defender_power / total_power))
     defender_losses = int(defender_units * (attacker_power / total_power))
 
-    # Не больше, чем юнитов в бою
-    attacker_losses = min(attacker_units, attacker_losses)
-    defender_losses = min(defender_units, defender_losses)
+    # Если оба меньше 25 — увеличиваем до 25 у кого-то
+    if attacker_losses < 25 and defender_losses < 25:
+        # Кто сильнее, тот получает меньше потерь
+        if attacker_power > defender_power:
+            defender_losses = 25
+            attacker_losses = int(attacker_losses * (25 / defender_losses))
+        else:
+            attacker_losses = 25
+            defender_losses = int(defender_losses * (25 / attacker_losses))
 
     # Применяем потери
     attacker.population = max(0, attacker.population - attacker_losses)
@@ -2349,10 +2355,6 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = (f"{crit_msg}⚔️ <b>Battle Results</b>\n\n"
                   f"{attacker_name}\n├ Lost: {attacker_losses}\n└ Left: {attacker.population}\n\n"
                   f"{defender_name}\n├ Lost: {defender_losses}\n└ Left: {defender.population}")
-        if attacker_losses >= 25:
-            result += f"\n\n🏆 <b>Battle ended! {attacker_name} reached 25 losses.</b>"
-        elif defender_losses >= 25:
-            result += f"\n\n🏆 <b>Battle ended! {defender_name} reached 25 losses.</b>"
         result += f"\n\n🔄 Turn passed to {defender_name}"
         my_city_text = "🏛 My City"
         build_text = "⚒ Build"
@@ -2363,10 +2365,6 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = (f"{crit_msg}⚔️ <b>Результаты битвы</b>\n\n"
                   f"{attacker_name}\n├ Потери: {attacker_losses}\n└ Осталось: {attacker.population}\n\n"
                   f"{defender_name}\n├ Потери: {defender_losses}\n└ Осталось: {defender.population}")
-        if attacker_losses >= 25:
-            result += f"\n\n🏆 <b>Битва окончена! {attacker_name} достиг 25 потерь.</b>"
-        elif defender_losses >= 25:
-            result += f"\n\n🏆 <b>Битва окончена! {defender_name} достиг 25 потерь.</b>"
         result += f"\n\n🔄 Ход передан {defender_name}"
         my_city_text = "🏛 Мой город"
         build_text = "⚒ Строить"
@@ -2395,61 +2393,6 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await check_game_over(room_id, context)
-        
-async def back_to_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    lang = user_languages.get(user_id, "en")
-    
-    parts = query.data.split("_")
-    room_id = "_".join(parts[3:-1])
-    target_user_id = int(parts[-1])
-    
-    if query.from_user.id != target_user_id:
-        return
-    
-    if room_id not in active_rooms:
-        return
-    
-    player = None
-    for p in active_rooms[room_id].get("players", []):
-        if p.user_id == target_user_id:
-            player = p
-            break
-    
-    if not player:
-        return
-    
-    # Тексты на нужном языке
-    if lang == "en":
-        my_city_text = "🏛 My City"
-        build_text = "⚒ Build"
-        war_text = "⚔️ War"
-        end_turn_text = "⏭ End Turn"
-        income_text = "📊 Income"
-    else:
-        my_city_text = "🏛 Мой город"
-        build_text = "⚒ Строить"
-        war_text = "⚔️ Война"
-        end_turn_text = "⏭ Завершить ход"
-        income_text = "📊 Доход"
-    
-    # НАСТОЯЩАЯ КЛАВИАТУРА
-    game_keyboard = [
-        [InlineKeyboardButton(my_city_text, callback_data=f"mycity_{room_id}_{target_user_id}"),
-         InlineKeyboardButton(build_text, callback_data=f"build_{room_id}_{target_user_id}")],
-        [InlineKeyboardButton(war_text, callback_data=f"war_{room_id}_{target_user_id}"),
-         InlineKeyboardButton(end_turn_text, callback_data=f"endturn_{room_id}_{target_user_id}"),
-         InlineKeyboardButton(income_text, callback_data=f"income_{room_id}_{target_user_id}")]
-    ]
-    
-    await query.edit_message_text(
-        "🎮 <b>Меню игры</b>",
-        reply_markup=InlineKeyboardMarkup(game_keyboard),
-        parse_mode="HTML"
-    )
     
 async def play_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
