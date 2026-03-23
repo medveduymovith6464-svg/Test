@@ -2198,9 +2198,9 @@ async def war(update: Update, context: ContextTypes.DEFAULT_TYPE):
         enemy_name = str(other_player.user_id)
 
     # Проверяем ресурсы на войну
-    FAITH_COST = 100
-    FOOD_COST = 250
-    MONEY_COST = 100
+    FAITH_COST = 150
+    FOOD_COST = 300
+    MONEY_COST = 200
 
     if player.faith < FAITH_COST or player.food < FOOD_COST or player.money < MONEY_COST:
         if lang == "en":
@@ -2280,10 +2280,10 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = active_rooms[room_id].get("lang", "en")
     chat_id = active_rooms[room_id]["chat_id"]
 
-    # 1. ПРОВЕРКА РЕСУРСОВ
-    FAITH_COST = 100
-    FOOD_COST = 250
-    MONEY_COST = 100
+    # 1. ПРОВЕРКА РЕСУРСОВ (НОВЫЕ ЦЕНЫ)
+    FAITH_COST = 150
+    FOOD_COST = 300
+    MONEY_COST = 200
 
     if attacker.faith < FAITH_COST or attacker.food < FOOD_COST or attacker.money < MONEY_COST:
         if lang == "en":
@@ -2298,8 +2298,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     attacker.food -= FOOD_COST
     attacker.money -= MONEY_COST
 
-    # 3. БОЙ — считаем потери так, чтобы у кого-то было 25
-    # Берём всё население, а не 25
+    # 3. БОЙ
     attacker_units = attacker.population
     defender_units = defender.population
 
@@ -2316,19 +2315,8 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if total_power == 0:
         total_power = 1
 
-    # Потери пропорциональны силе
     attacker_losses = int(attacker_units * (defender_power / total_power))
     defender_losses = int(defender_units * (attacker_power / total_power))
-
-    # Если оба меньше 25 — увеличиваем до 25 у кого-то
-    if attacker_losses < 25 and defender_losses < 25:
-        # Кто сильнее, тот получает меньше потерь
-        if attacker_power > defender_power:
-            defender_losses = 25
-            attacker_losses = int(attacker_losses * (25 / defender_losses))
-        else:
-            attacker_losses = 25
-            defender_losses = int(defender_losses * (25 / attacker_losses))
 
     # Применяем потери
     attacker.population = max(0, attacker.population - attacker_losses)
@@ -2342,7 +2330,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resurrect = defender_losses * 10 // 100
         defender.population += resurrect
 
-    # 4. ИМЕНА
+    # Имена
     try:
         attacker_name = (await context.bot.get_chat_member(chat_id, attacker_id)).user.username or str(attacker_id)
         defender_name = (await context.bot.get_chat_member(chat_id, enemy_id)).user.username or str(enemy_id)
@@ -2350,7 +2338,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         attacker_name = str(attacker_id)
         defender_name = str(enemy_id)
 
-    # 5. СООБЩЕНИЕ
+    # Сообщение
     if lang == "en":
         result = (f"{crit_msg}⚔️ <b>Battle Results</b>\n\n"
                   f"{attacker_name}\n├ Lost: {attacker_losses}\n└ Left: {attacker.population}\n\n"
@@ -2372,7 +2360,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end_turn_text = "⏭ Завершить ход"
         income_text = "📊 Доход"
 
-    # 6. ПЕРЕДАЧА ХОДА
+    # Передача хода
     other_player = defender
     active_rooms[room_id]["allowed"] = [other_player.user_id]
     active_rooms[room_id]["current_player"] = other_player.user_id
