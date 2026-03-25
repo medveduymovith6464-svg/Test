@@ -1858,7 +1858,6 @@ async def confirm_endturn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not other_player:
         return
     
-    # Получаем юзернеймы
     chat_id = active_rooms[room_id]["chat_id"]
     
     async def get_username(user_id):
@@ -1874,30 +1873,25 @@ async def confirm_endturn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_turn = active_rooms[room_id].get("turn", 1)
     current_round = active_rooms[room_id].get("round", 1)
     
-    # Чётный ход — заканчиваем раунд
     if current_turn % 2 == 0:
         current_round += 1
         active_rooms[room_id]["round"] = current_round
     
-    # 👇 ПРОВЕРКА НА ЭЛЬФА (5% шанс украсть ход)
     stolen = False
     steal_text = ""
     if player.race_id == "elf" and random.randint(1, 100) <= 5:
         other_player = player
         stolen = True
-        
         try:
             chat_member = await context.bot.get_chat_member(chat_id, player.user_id)
             player_name = chat_member.user.username or chat_member.user.first_name or str(player.user_id)
         except:
             player_name = str(player.user_id)
-        
         if lang == "en":
             steal_text = f"🧝 <b>Elf ability!</b>\n{player_name} stole the turn!"
         else:
             steal_text = f"🧝 <b>Способность эльфа!</b>\n{player_name} украл ход!"
     
-    # Если не украли — нормальная смена хода
     if not stolen:
         active_rooms[room_id]["allowed"] = [other_player.user_id]
         active_rooms[room_id]["current_player"] = other_player.user_id
@@ -1907,17 +1901,14 @@ async def confirm_endturn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     active_rooms[room_id]["turn"] = current_turn + 1
     
-    # 👇 ВЫЗЫВАЕМ next_round И ПОЛУЧАЕМ СПИСОК СОБЫТИЙ
     events = await next_round(room_id, context)
     
     if await check_game_over(room_id, context):
         return
     
-    # 👇 ЕСЛИ БЫЛА КРАЖА — ПОКАЗЫВАЕМ ОТДЕЛЬНО (но можно и в сообщение добавить)
     if stolen:
         back_keyboard = [[InlineKeyboardButton("🔙 Back" if lang == "en" else "🔙 Назад", 
                                               callback_data=f"delete_steal_{room_id}_{target_user_id}")]]
-        
         sent_msg = await context.bot.send_message(
             chat_id=chat_id,
             text=steal_text,
@@ -1926,7 +1917,7 @@ async def confirm_endturn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         active_rooms[room_id]["steal_msg_id"] = sent_msg.message_id
     
-    # 👇 ТЕПЕРЬ СОБЫТИЯ ВНУТРИ СООБЩЕНИЯ О ХОДЕ
+    # 👇 СОБЫТИЯ ВНУТРИ СООБЩЕНИЯ О ХОДЕ (без отдельной отправки)
     if lang == "en":
         turn_ended_text = (f"🔄 <b>Turn ended!</b>\n\n"
                           f"📅 Round {current_round}\n"
@@ -1950,131 +1941,6 @@ async def confirm_endturn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if events:
             turn_ended_text += f"\n\n🎲 <b>События раунда:</b>\n" + "\n".join(events)
         
-        my_city_text = "🏛 Мой город"
-        build_text = "⚒ Строить"
-        war_text = "⚔️ Война"
-        end_turn_text = "⏭ Завершить ход"
-        income_text = "📊 Доход"
-    
-    game_keyboard = [
-        [InlineKeyboardButton(my_city_text, callback_data=f"mycity_{room_id}_{other_player.user_id}"),
-         InlineKeyboardButton(build_text, callback_data=f"build_{room_id}_{other_player.user_id}")],
-        [InlineKeyboardButton(war_text, callback_data=f"war_{room_id}_{other_player.user_id}"),
-         InlineKeyboardButton(end_turn_text, callback_data=f"endturn_{room_id}_{other_player.user_id}"),
-         InlineKeyboardButton(income_text, callback_data=f"income_{room_id}_{other_player.user_id}")]
-    ]
-
-    await query.edit_message_text(
-        text=turn_ended_text,
-        reply_markup=InlineKeyboardMarkup(game_keyboard),
-        parse_mode="HTML"
-    )
-    
-    async def get_username(user_id):
-        try:
-            chat_member = await context.bot.get_chat_member(chat_id, user_id)
-            return chat_member.user.username or chat_member.user.first_name or str(user_id)
-        except:
-            return str(user_id)
-    
-    current_name = await get_username(target_user_id)
-    next_name = await get_username(other_player.user_id)
-    
-    current_turn = active_rooms[room_id].get("turn", 1)
-    current_round = active_rooms[room_id].get("round", 1)
-    
-    # Чётный ход — заканчиваем раунд
-    if current_turn % 2 == 0:
-        current_round += 1
-        active_rooms[room_id]["round"] = current_round
-    
-    # 👇 ПРОВЕРКА НА ЭЛЬФА (5% шанс украсть ход)
-    stolen = False
-    steal_text = ""
-    if player.race_id == "elf" and random.randint(1, 100) <= 5:
-        # Крадём ход — оставляем текущего игрока
-        other_player = player
-        stolen = True
-        
-        # Получаем имя для сообщения
-        try:
-            chat_member = await context.bot.get_chat_member(chat_id, player.user_id)
-            player_name = chat_member.user.username or chat_member.user.first_name or str(player.user_id)
-        except:
-            player_name = str(player.user_id)
-        
-        if lang == "en":
-            steal_text = f"🧝 <b>Elf ability!</b>\n{player_name} stole the turn!"
-        else:
-            steal_text = f"🧝 <b>Способность эльфа!</b>\n{player_name} украл ход!"
-    
-    # Если не украли — нормальная смена хода
-    if not stolen:
-        active_rooms[room_id]["allowed"] = [other_player.user_id]
-        active_rooms[room_id]["current_player"] = other_player.user_id
-    else:
-        active_rooms[room_id]["allowed"] = [player.user_id]
-        active_rooms[room_id]["current_player"] = player.user_id
-    
-    # Увеличиваем номер хода
-    active_rooms[room_id]["turn"] = current_turn + 1
-    
-    # 👇 ВЫЗЫВАЕМ next_round И ПОЛУЧАЕМ СПИСОК СОБЫТИЙ
-    events = await next_round(room_id, context)
-    
-    if await check_game_over(room_id, context):
-        return
-    
-    # 👇 ЕСЛИ БЫЛА КРАЖА — ПОКАЗЫВАЕМ ОТДЕЛЬНОЕ СООБЩЕНИЕ
-    if stolen:
-        back_keyboard = [[InlineKeyboardButton("🔙 Back" if lang == "en" else "🔙 Назад", 
-                                              callback_data=f"delete_steal_{room_id}_{target_user_id}")]]
-        
-        sent_msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text=steal_text,
-            reply_markup=InlineKeyboardMarkup(back_keyboard),
-            parse_mode="HTML"
-        )
-        active_rooms[room_id]["steal_msg_id"] = sent_msg.message_id
-    
-    # 👇 ЕСЛИ БЫЛИ СОБЫТИЯ — ПОКАЗЫВАЕМ ИХ
-    if events:
-        if lang == "en":
-            event_title = "🎲 <b>EVENTS THIS ROUND!</b>"
-            back_text = "🔙 Back to Game"
-        else:
-            event_title = "🎲 <b>СОБЫТИЯ РАУНДА!</b>"
-            back_text = "🔙 В игру"
-        
-        events_text = event_title + "\n\n" + "\n".join(events)
-        
-        back_keyboard = [[InlineKeyboardButton(back_text, callback_data=f"delete_events_{room_id}_{other_player.user_id}")]]
-        
-        sent_msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text=events_text,
-            reply_markup=InlineKeyboardMarkup(back_keyboard),
-            parse_mode="HTML"
-        )
-        active_rooms[room_id]["events_msg_id"] = sent_msg.message_id
-    
-    # Тексты с номером раунда
-    if lang == "en":
-        turn_ended_text = (f"🔄 <b>Turn ended!</b>\n\n"
-                          f"📅 Round {current_round}\n"
-                          f"👤 {current_name} finished their turn.\n"
-                          f"🎮 Now <b>{next_name}</b>'s turn!")
-        my_city_text = "🏛 My City"
-        build_text = "⚒ Build"
-        war_text = "⚔️ War"
-        end_turn_text = "⏭ End Turn"
-        income_text = "📊 Income"
-    else:
-        turn_ended_text = (f"🔄 <b>Ход закончен!</b>\n\n"
-                          f"📅 Раунд {current_round}\n"
-                          f"👤 {current_name} завершил ход.\n"
-                          f"🎮 Теперь ходит <b>{next_name}</b>!")
         my_city_text = "🏛 Мой город"
         build_text = "⚒ Строить"
         war_text = "⚔️ Война"
